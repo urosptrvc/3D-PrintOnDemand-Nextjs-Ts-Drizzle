@@ -8,7 +8,7 @@ export function HeroSection() {
     <section className="pt-20">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="lg:grid lg:grid-cols-12 lg:gap-8">
-          <div className="pt-16 sm:text-center md:max-w-2xl md:mx-auto lg:col-span-6 lg:text-left">
+          <div className="pt-16 sm:text-center md:max-w-2xl md:mx-auto lg:col-span-8 lg:text-left">
             <h1 className="text-4xl font-bold text-gray-900 tracking-tight sm:text-5xl md:text-6xl">
               Your 3D Designs
               <span className="block text-orange-500">
@@ -32,7 +32,7 @@ export function HeroSection() {
               </Link>
             </div>
           </div>
-          <div className="mt-16 relative sm:max-w-lg sm:mx-auto lg:mt-0 lg:max-w-none lg:mx-0 lg:col-span-6 lg:flex lg:items-center">
+          <div className="mt-16 relative sm:max-w-lg sm:mx-auto lg:mt-0 lg:max-w-none lg:mx-0 lg:col-span-4 lg:flex lg:items-center">
             <div className="w-full h-[600px]">
               <PrinterAnimation />
             </div>
