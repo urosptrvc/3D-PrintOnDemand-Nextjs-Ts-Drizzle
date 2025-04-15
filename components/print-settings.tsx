@@ -11,22 +11,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useAtom } from "jotai";
+import { printOrderAtom } from "@/lib/store";
 
-interface PrintSettingsProps {
-  settings: {
-    material: string;
-    color: string;
-    layerHeight: number;
-    infill: number;
-    supportStructure: string;
-  };
-  onSettingsChange: (settings: any) => void;
-}
-
-export function PrintSettings({
-  settings,
-  onSettingsChange,
-}: PrintSettingsProps) {
+export function PrintSettings() {
+  const [printOrder, setPrintOrder] = useAtom(printOrderAtom);
   return (
     <Tabs defaultValue="material" className="w-full">
       <TabsList className="grid w-full grid-cols-3">
@@ -40,8 +29,10 @@ export function PrintSettings({
           <div>
             <h3 className="text-lg font-medium mb-2">Material</h3>
             <RadioGroup
-              value={settings.material}
-              onValueChange={(value) => onSettingsChange({ material: value })}
+              value={printOrder.material}
+              onValueChange={(value) =>
+                setPrintOrder({ ...printOrder, material: value })
+              }
               className="grid grid-cols-1 md:grid-cols-2 gap-4"
             >
               <div className="flex items-start space-x-3 space-y-0 rounded-md border p-4">
@@ -122,8 +113,10 @@ export function PrintSettings({
           <div className="pt-4">
             <h3 className="text-lg font-medium mb-2">Color</h3>
             <RadioGroup
-              value={settings.color}
-              onValueChange={(value) => onSettingsChange({ color: value })}
+              value={printOrder.color}
+              onValueChange={(value) =>
+                setPrintOrder({ ...printOrder, color: value })
+              }
               className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4"
             >
               <div className="flex flex-col items-center space-y-2">
@@ -191,7 +184,7 @@ export function PrintSettings({
             <div className="flex justify-between mb-2">
               <h3 className="text-lg font-medium">Layer Height</h3>
               <span className="text-sm font-medium">
-                {settings.layerHeight} mm
+                {printOrder.layerHeight} mm
               </span>
             </div>
             <p className="text-sm text-muted-foreground mb-4">
@@ -199,12 +192,12 @@ export function PrintSettings({
               print faster but show more visible layers.
             </p>
             <Slider
-              value={[settings.layerHeight * 100]}
+              value={[printOrder.layerHeight * 100]}
               min={10}
               max={30}
               step={5}
               onValueChange={(value) =>
-                onSettingsChange({ layerHeight: value[0] / 100 })
+                setPrintOrder({ ...printOrder, layerHeight: value[0] / 100 })
               }
               className="mb-2"
             />
@@ -218,18 +211,20 @@ export function PrintSettings({
           <div className="pt-6">
             <div className="flex justify-between mb-2">
               <h3 className="text-lg font-medium">Infill Percentage</h3>
-              <span className="text-sm font-medium">{settings.infill}%</span>
+              <span className="text-sm font-medium">{printOrder.infill}%</span>
             </div>
             <p className="text-sm text-muted-foreground mb-4">
               Controls the density inside your print. Higher values create
               stronger parts but use more material.
             </p>
             <Slider
-              value={[settings.infill]}
+              value={[printOrder.infill]}
               min={10}
               max={100}
               step={5}
-              onValueChange={(value) => onSettingsChange({ infill: value[0] })}
+              onValueChange={(value) =>
+                setPrintOrder({ ...printOrder, infill: value[0] })
+              }
               className="mb-2"
             />
             <div className="flex justify-between text-xs text-muted-foreground">
@@ -250,9 +245,9 @@ export function PrintSettings({
             after printing.
           </p>
           <Select
-            value={settings.supportStructure}
+            value={printOrder.supportStructure}
             onValueChange={(value) =>
-              onSettingsChange({ supportStructure: value })
+              setPrintOrder({ ...printOrder, supportStructure: value })
             }
           >
             <SelectTrigger>

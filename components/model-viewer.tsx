@@ -1,130 +1,239 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { Canvas } from "@react-three/fiber";
-import { OrbitControls, Grid, useProgress, Html } from "@react-three/drei";
-import { STLLoader } from "three/examples/jsm/loaders/STLLoader";
-import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader";
-import { ThreeMFLoader } from "three/examples/jsm/loaders/3MFLoader";
-import { Suspense } from "react";
-import { Button } from "@/components/ui/button";
-import { Loader2, RotateCw, ZoomIn, ZoomOut } from "lucide-react";
+import React, { Suspense, useEffect, useRef, useState } from "react";
+import { Canvas, useThree } from "@react-three/fiber";
+import { Html, OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
+// @ts-ignore
+import { STLLoader } from "three/examples/jsm/loaders/STLLoader";
+// @ts-ignore
+import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader";
+// @ts-ignore
+import { ThreeMFLoader } from "three/examples/jsm/loaders/3MFLoader";
+import { Button } from "@/components/ui/button";
+import { Loader2, RotateCw } from "lucide-react";
+import { useAtom } from "jotai";
+import { printOrderAtom } from "@/lib/store";
 
-interface ModelViewerProps {
-  file: File | null;
-  height?: number;
-}
+// Supported file types
+const SUPPORTED_TYPES = ["stl", "obj", "3mf"] as const;
+type SupportedFileType = (typeof SUPPORTED_TYPES)[number];
 
-function LoadingIndicator() {
-  const { progress } = useProgress();
+// Define loader types
+type ModelLoader = STLLoader | OBJLoader | ThreeMFLoader;
+type ModelResult = THREE.BufferGeometry | THREE.Group;
+
+// Loader function that returns a promise
+const loadModel = (
+  url: string,
+  fileType: SupportedFileType,
+): Promise<ModelResult> => {
+  let loader: ModelLoader;
+
+  switch (fileType) {
+    case "stl":
+      loader = new STLLoader();
+      return new Promise((resolve, reject) => {
+        loader.load(url, resolve, undefined, reject);
+      });
+
+    case "obj":
+      loader = new OBJLoader();
+      return new Promise((resolve, reject) => {
+        loader.load(url, resolve, undefined, reject);
+      });
+
+    case "3mf":
+      loader = new ThreeMFLoader();
+      return new Promise((resolve, reject) => {
+        loader.load(url, resolve, undefined, reject);
+      });
+
+    default:
+      return Promise.reject(new Error(`Unsupported file type: ${fileType}`));
+  }
+};
+
+// Loading spinner component
+function LoadingSpinner() {
   return (
     <Html center>
       <div className="flex flex-col items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        <p className="mt-2 text-sm text-muted-foreground">
-          Loading model... {progress.toFixed(0)}%
-        </p>
+        <p className="mt-2 text-sm text-gray-600">Loading model...</p>
       </div>
     </Html>
   );
 }
 
-function Model({ url, fileType }: { url: string; fileType: string }) {
-  const meshRef = useRef<THREE.Mesh>(null);
-  const [model, setModel] = useState<THREE.BufferGeometry | null>(null);
-
-  useEffect(() => {
-    let loader;
-
-    if (fileType === "stl") {
-      loader = new STLLoader();
-    } else if (fileType === "obj") {
-      loader = new OBJLoader();
-    } else if (fileType === "3mf") {
-      loader = new ThreeMFLoader();
-    } else {
-      console.error("Unsupported file type:", fileType);
-      return;
-    }
-
-    loader.load(
-      url,
-      (result) => {
-        if (fileType === "stl") {
-          setModel(result);
-        } else if (fileType === "obj" || fileType === "3mf") {
-          // For OBJ and 3MF, we need to extract the geometry
-          // This is simplified and might need adjustment based on the actual model structure
-          if (result.children && result.children.length > 0) {
-            const mesh = result.children.find(
-              (child) => child instanceof THREE.Mesh,
-            ) as THREE.Mesh;
-            if (mesh && mesh.geometry) {
-              setModel(mesh.geometry);
-            }
-          }
-        }
-      },
-      (xhr) => {
-        console.log((xhr.loaded / xhr.total) * 100 + "% loaded");
-      },
-      (error) => {
-        console.error("An error occurred loading the model:", error);
-      },
-    );
-  }, [url, fileType]);
-
-  useEffect(() => {
-    if (meshRef.current && model) {
-      // Center the model
-      model.computeBoundingBox();
-      const center = new THREE.Vector3();
-      model.boundingBox?.getCenter(center);
-      model.center();
-
-      // Scale the model to a reasonable size
-      model.computeBoundingSphere();
-      const radius = model.boundingSphere?.radius || 1;
-      const scale = 5 / radius;
-      meshRef.current.scale.set(scale, scale, scale);
-    }
-  }, [model]);
-
-  if (!model) return null;
-
+// Error message component
+function ErrorMessage({ message }: { message: string }) {
   return (
-    <mesh ref={meshRef}>
-      <bufferGeometry attach="geometry" {...model} />
-      <meshStandardMaterial
-        attach="material"
-        color="#ffffff"
-        roughness={0.5}
-        metalness={0.1}
-      />
-    </mesh>
+    <Html center>
+      <div className="bg-red-50 border border-red-200 rounded-md p-4 max-w-xs">
+        <p className="text-red-600 text-sm">{message}</p>
+      </div>
+    </Html>
   );
 }
 
-export function ModelViewer({ file, height = 400 }: ModelViewerProps) {
-  const [objectUrl, setObjectUrl] = useState<string | null>(null);
-  const [fileType, setFileType] = useState<string>("");
-  const controlsRef = useRef<any>(null);
+// The actual 3D model component
+function ModelObject({
+  url,
+  fileType,
+}: {
+  url: string;
+  fileType: SupportedFileType;
+}) {
+  const [geometry, setGeometry] = useState<THREE.BufferGeometry | null>(null);
+  const [object, setObject] = useState<THREE.Group | null>(null);
+  const [error, _setError] = useState<string | null>(null);
+  const objectRef = useRef<THREE.Group>(null);
+  const { camera } = useThree();
 
+  // Load the model
   useEffect(() => {
-    if (file) {
-      const url = URL.createObjectURL(file);
-      setObjectUrl(url);
+    let isMounted = true;
 
-      // Determine file type from extension
-      const extension = file.name.split(".").pop()?.toLowerCase() || "";
-      setFileType(extension);
+    const load = async () => {
+      const result = await loadModel(url, fileType);
 
+      if (!isMounted) return;
+
+      if (fileType === "stl") {
+        // STL loader returns geometry directly
+        setGeometry(result as THREE.BufferGeometry);
+      } else {
+        // OBJ and 3MF loaders return Object3D/Group
+        setObject(result as THREE.Group);
+      }
+    };
+
+    load().then(() => (isMounted = false));
+    // return () => {
+    //   isMounted = false;
+    // };
+  }, [url, fileType]);
+
+  // Center and fit model to view
+  useEffect(() => {
+    if (!objectRef.current) return;
+
+    const box = new THREE.Box3().setFromObject(objectRef.current);
+    const center = new THREE.Vector3();
+    const size = new THREE.Vector3();
+
+    box.getCenter(center);
+    box.getSize(size);
+
+    // Center the object
+    objectRef.current.position.x = -center.x;
+    objectRef.current.position.y = -center.y;
+    objectRef.current.position.z = -center.z;
+
+    // Fit to camera view
+    const maxDim = Math.max(size.x, size.y, size.z);
+    // @ts-ignore
+    const fov = camera.fov * (Math.PI / 180);
+    camera.position.z = (maxDim / 2 / Math.tan(fov / 2)) * 1.5;
+    camera.updateProjectionMatrix();
+  }, [geometry, object, camera]);
+
+  if (error) return <ErrorMessage message={error} />;
+  if (!geometry && !object) return <LoadingSpinner />;
+
+  return (
+    <group ref={objectRef}>
+      {geometry ? (
+        <mesh>
+          <bufferGeometry attach="geometry" {...geometry} />
+          <meshPhongMaterial
+            color="#e0e0e0"
+            specular="#111111"
+            shininess={30}
+            flatShading={false}
+          />
+        </mesh>
+      ) : object ? (
+        <primitive object={object} />
+      ) : null}
+    </group>
+  );
+}
+
+// The scene setup component
+function ModelScene({
+  url,
+  fileType,
+}: {
+  url: string;
+  fileType: SupportedFileType;
+}) {
+  // @ts-ignore
+  const controlsRef = useRef<OrbitControls>(null);
+  return (
+    <>
+      {/* Lighting setup */}
+      <ambientLight intensity={0.7} />
+      <directionalLight
+        position={[10, 10, 5]}
+        intensity={0.8}
+        castShadow={true}
+      />
+      <directionalLight position={[-10, -10, -5]} intensity={0.4} />
+      <directionalLight position={[0, -10, 0]} intensity={0.3} />
+
+      {/* The actual model */}
+      <Suspense fallback={<LoadingSpinner />}>
+        <ModelObject url={url} fileType={fileType} />
+      </Suspense>
+
+      {/* Controls */}
+      <OrbitControls
+        ref={controlsRef}
+        enableDamping
+        dampingFactor={0.1}
+        minDistance={1}
+        maxDistance={100}
+      />
+    </>
+  );
+}
+
+// Main component that is exported
+export function ModelViewer({ height = 400 }: { height?: number }) {
+  const [printOrder] = useAtom(printOrderAtom);
+  const [modelUrl, setModelUrl] = useState<string | null>(null);
+  const [fileType, setFileType] = useState<SupportedFileType | "">("");
+  // @ts-ignore
+  const controlsRef = useRef<OrbitControls>(null);
+
+  // Create object URL when file changes
+  useEffect(() => {
+    if (printOrder.uploadedFile) {
+      // Get file extension
+      const extension =
+        printOrder.uploadedFile.name.split(".").pop()?.toLowerCase() || "";
+
+      if (!SUPPORTED_TYPES.includes(extension as SupportedFileType)) {
+        console.error(`Unsupported file type: ${extension}`);
+        return;
+      }
+
+      // Create object URL
+      const url = URL.createObjectURL(printOrder.uploadedFile);
+      setModelUrl(url);
+      setFileType(extension as SupportedFileType);
+
+      // Clean up
       return () => {
-        URL.revokeObjectURL(url);
+        if (url) URL.revokeObjectURL(url);
       };
+    } else {
+      setModelUrl(null);
+      setFileType("");
     }
-  }, [file]);
+  }, [printOrder.uploadedFile]);
 
   const resetCamera = () => {
     if (controlsRef.current) {
@@ -132,51 +241,44 @@ export function ModelViewer({ file, height = 400 }: ModelViewerProps) {
     }
   };
 
-  if (!file || !objectUrl) {
+  // Empty state
+  if (!modelUrl || !fileType) {
     return (
       <div
-        className="flex items-center justify-center bg-muted rounded-lg"
+        className="flex items-center justify-center bg-gray-100 rounded-lg border border-gray-200"
         style={{ height: `${height}px` }}
       >
-        <p className="text-muted-foreground">No model file selected</p>
+        <div className="text-center">
+          <p className="text-gray-500">No model selected</p>
+          <p className="text-gray-400 text-sm mt-1">
+            Upload a 3D model file to preview
+          </p>
+        </div>
       </div>
     );
   }
 
   return (
     <div
-      className="relative rounded-lg overflow-hidden"
+      className="relative w-full rounded-lg overflow-hidden border border-gray-200 shadow-sm"
       style={{ height: `${height}px` }}
     >
-      <Canvas camera={{ position: [0, 0, 10], fov: 50 }}>
-        <ambientLight intensity={0.5} />
-        <spotLight
-          position={[10, 10, 10]}
-          angle={0.15}
-          penumbra={1}
-          intensity={1}
-          castShadow
-        />
-        <Suspense fallback={<LoadingIndicator />}>
-          {objectUrl && fileType && (
-            <Model url={objectUrl} fileType={fileType} />
-          )}
-          <Grid
-            infiniteGrid
-            cellSize={1}
-            cellThickness={0.6}
-            cellColor="#6e6e6e"
-            sectionSize={5}
-            sectionThickness={1.2}
-            sectionColor="#9d4b4b"
-            fadeDistance={30}
-          />
-        </Suspense>
-        <OrbitControls ref={controlsRef} />
+      <Canvas
+        shadows
+        camera={{ position: [0, 0, 15], fov: 50 }}
+        gl={{ antialias: true }}
+      >
+        <ModelScene url={modelUrl} fileType={fileType} />
       </Canvas>
 
+      {/* Controls overlay */}
       <div className="absolute bottom-4 right-4 flex gap-2">
-        <Button variant="secondary" size="icon" onClick={resetCamera}>
+        <Button
+          variant="secondary"
+          size="icon"
+          onClick={resetCamera}
+          className="bg-white bg-opacity-70 hover:bg-opacity-100"
+        >
           <RotateCw className="h-4 w-4" />
           <span className="sr-only">Reset View</span>
         </Button>

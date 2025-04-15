@@ -8,38 +8,28 @@ import { PriceCalculator } from "@/components/price-calculator";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ArrowLeft, ArrowRight } from "lucide-react";
+import { printOrderAtom } from "@/lib/store";
+import { useAtom } from "jotai";
+import Link from "next/link";
+import PaymentPage from "@/components/payment-page";
 
 export default function UploadPage() {
-  const [file, setFile] = useState<File | null>(null);
   const [activeTab, setActiveTab] = useState("upload");
-  const [settings, setSettings] = useState({
-    material: "pla",
-    color: "white",
-    layerHeight: 0.2,
-    infill: 20,
-    supportStructure: "auto",
-  });
-
-  const handleFileAccepted = (acceptedFile: File) => {
-    setFile(acceptedFile);
-    // Move to the next tab after a short delay
-    setTimeout(() => setActiveTab("preview"), 500);
-  };
-
-  const handleSettingsChange = (newSettings: any) => {
-    setSettings({ ...settings, ...newSettings });
-  };
+  const [printOrder, setPrintOrder] = useAtom(printOrderAtom);
 
   const goToNextStep = () => {
-    if (activeTab === "upload" && file) setActiveTab("preview");
+    if (activeTab === "upload" && printOrder.uploadedFile)
+      setActiveTab("preview");
     else if (activeTab === "preview") setActiveTab("settings");
     else if (activeTab === "settings") setActiveTab("checkout");
+    else if (activeTab === "checkout") setActiveTab("payment");
   };
 
   const goToPreviousStep = () => {
     if (activeTab === "preview") setActiveTab("upload");
     else if (activeTab === "settings") setActiveTab("preview");
     else if (activeTab === "checkout") setActiveTab("settings");
+    else if (activeTab === "payment") setActiveTab("checkout");
   };
 
   return (
@@ -48,16 +38,19 @@ export default function UploadPage() {
         <h1 className="text-3xl font-bold mb-6">Create Your 3D Print Order</h1>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="upload">Upload</TabsTrigger>
-            <TabsTrigger value="preview" disabled={!file}>
+            <TabsTrigger value="preview" disabled={!printOrder.uploadedFile}>
               Preview
             </TabsTrigger>
-            <TabsTrigger value="settings" disabled={!file}>
+            <TabsTrigger value="settings" disabled={!printOrder.uploadedFile}>
               Settings
             </TabsTrigger>
-            <TabsTrigger value="checkout" disabled={!file}>
+            <TabsTrigger value="checkout" disabled={!printOrder.uploadedFile}>
               Checkout
+            </TabsTrigger>
+            <TabsTrigger value="payment" disabled={!printOrder.uploadedFile}>
+              Payment
             </TabsTrigger>
           </TabsList>
 
@@ -71,11 +64,14 @@ export default function UploadPage() {
                   We accept STL, OBJ, and 3MF files up to 100MB. Your file will
                   be securely processed and prepared for printing.
                 </p>
-                <FileUpload onFileAccepted={handleFileAccepted} />
+                <FileUpload />
               </div>
 
               <div className="flex justify-end">
-                <Button onClick={goToNextStep} disabled={!file}>
+                <Button
+                  onClick={goToNextStep}
+                  disabled={!printOrder.uploadedFile}
+                >
                   Continue to Preview <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
               </div>
@@ -92,7 +88,7 @@ export default function UploadPage() {
                   Examine your 3D model from all angles. You can rotate, zoom,
                   and pan to get a better view.
                 </p>
-                {file && <ModelViewer file={file} />}
+                {printOrder.uploadedFile && <ModelViewer />}
               </div>
 
               <div className="flex justify-between">
@@ -116,10 +112,7 @@ export default function UploadPage() {
                   Choose your preferred material, color, and print settings to
                   customize your 3D print.
                 </p>
-                <PrintSettings
-                  settings={settings}
-                  onSettingsChange={handleSettingsChange}
-                />
+                <PrintSettings />
               </div>
 
               <div className="flex justify-between">
@@ -142,9 +135,11 @@ export default function UploadPage() {
                   payment.
                 </p>
                 <div className="grid md:grid-cols-2 gap-6">
-                  <div>{file && <ModelViewer file={file} height={300} />}</div>
                   <div>
-                    <PriceCalculator file={file} settings={settings} />
+                    {printOrder.uploadedFile && <ModelViewer height={300} />}
+                  </div>
+                  <div>
+                    <PriceCalculator />
                   </div>
                 </div>
               </div>
@@ -153,8 +148,32 @@ export default function UploadPage() {
                 <Button variant="outline" onClick={goToPreviousStep}>
                   <ArrowLeft className="mr-2 h-4 w-4" /> Back to Settings
                 </Button>
-                <Button>Proceed to Payment</Button>
+                <Button onClick={goToNextStep}>
+                  Proceed to Payment <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
               </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="payment" className="mt-6">
+            <div className="space-y-6">
+              <div className="bg-muted/50 p-6 rounded-lg">
+                <h2 className="text-xl font-semibold mb-4">
+                  Enter shipping details
+                </h2>
+                <p className="text-muted-foreground mb-6">
+                  Please enter email, name, phone number and address
+                </p>
+                <PaymentPage />
+              </div>
+
+              <Button
+                className={"relative"}
+                variant="outline"
+                onClick={goToPreviousStep}
+              >
+                <ArrowLeft className="mr-2 h-4 w-4" /> Back to Preview
+              </Button>
             </div>
           </TabsContent>
         </Tabs>
